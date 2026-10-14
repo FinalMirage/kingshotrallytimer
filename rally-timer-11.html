@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Kingshot Rally Timer</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background-color: #f4f6f9;
+            color: #333;
+            margin: 0;
+            padding: 20px;
+        }
+        .container {
+            max-width: 950px;
+            margin: 0 auto;
+            background: #fff;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        h2 { margin-top: 0; color: #1a73e8; }
+        .grid-section {
+            display: grid;
+            grid-template-columns: 1.2fr 1fr;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        @media(max-width: 768px) {
+            .grid-section { grid-template-columns: 1fr; }
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 15px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 8px 10px;
+            text-align: left;
+            vertical-align: middle;
+        }
+        th {
+            background-color: #f8f9fa;
+        }
+        input[type="text"], input[type="number"] {
+            width: 100%;
+            padding: 6px;
+            box-sizing: border-box;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        .controls {
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+        button {
+            background-color: #1a73e8;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        button:hover { background-color: #1557b0; }
+        .btn-success { background-color: #28a745; }
+        .btn-success:hover { background-color: #218838; }
+        .btn-danger { background-color: #dc3545; padding: 6px 10px; font-size: 12px; }
+        .btn-danger:hover { background-color: #c82333; }
+        #copyStatus {
+            font-size: 14px;
+            color: #28a745;
+            font-weight: bold;
+            display: none;
+        }
+        .instructions {
+            background-color: #e8f0fe;
+            padding: 15px;
+            border-radius: 6px;
+            font-size: 14px;
+            line-height: 1.5;
+        }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <h2>Kingshot Rally Timer Calculator</h2>
+    
+    <div class="controls">
+        <div>
+            <label for="offsetSeconds"><strong>Buffer Before First Rally Starts (seconds):</strong></label>
+            <input type="number" id="offsetSeconds" value="30" style="width: 80px; display: inline-block; margin-left: 5px;">
+        </div>
+        <button onclick="calculateRallies()">Recalculate</button>
+        <button class="btn-success" onclick="copyResults()">Copy Results to Clipboard</button>
+        <span id="copyStatus">Copied!</span>
+    </div>
+
+    <div class="grid-section">
+        <!-- Input Table -->
+        <div>
+            <h3>Rally Leaders</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Name</th>
+                        <th>March (s)</th>
+                        <th>Delay (s)</th>
+                        <th>Action</th>
+                    </tr>
+                </thead>
+                <tbody id="inputTableBody">
+                    <!-- Populated dynamically -->
+                </tbody>
+            </table>
+            <button onclick="addRow()">Add Row</button>
+        </div>
+
+        <!-- Output Table -->
+        <div>
+            <h3>Sorted Results</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Leader</th>
+                        <th>Converted UTC Start Time</th>
+                    </tr>
+                </thead>
+                <tbody id="outputTableBody">
+                    <!-- Populated dynamically -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+
+    <div class="instructions">
+        <strong>Quick Guide:</strong> Enter your rally leaders, march times, and delays on the left. Use the <strong>Delete</strong> button to remove any unnecessary rows. Set your buffer seconds, click <strong>Recalculate</strong>, and instantly copy your clean chronological schedule!
+    </div>
+</div>
+
+<script>
+    let initialData = [
+        { leader: "lexra", march: 30, delay: 2 },
+        { leader: "mirage", march: 31, delay: 0 },
+        { leader: "Noot", march: 37, delay: 0 },
+        { leader: "code", march: 33, delay: 0 },
+        { leader: "red", march: 34, delay: 0 }
+    ];
+
+    let lastComputedResults = [];
+
+    function renderInputs() {
+        const tbody = document.getElementById('inputTableBody');
+        tbody.innerHTML = '';
+        initialData.forEach((row, index) => {
+            tbody.innerHTML += `
+                <tr>
+                    <td><input type="text" value="${row.leader}" onchange="updateData(${index}, 'leader', this.value)"></td>
+                    <td><input type="number" value="${row.march}" onchange="updateData(${index}, 'march', this.value)"></td>
+                    <td><input type="number" value="${row.delay}" onchange="updateData(${index}, 'delay', this.value)"></td>
+                    <td style="text-align: center;"><button class="btn-danger" onclick="deleteRow(${index})">Delete</button></td>
+                </tr>
+            `;
+        });
+        calculateRallies();
+    }
+
+    function updateData(index, field, value) {
+        initialData[index][field] = field === 'leader' ? value : Number(value);
+        calculateRallies();
+    }
+
+    function addRow() {
+        initialData.push({ leader: "new", march: 30, delay: 0 });
+        renderInputs();
+    }
+
+    function deleteRow(index) {
+        if (initialData.length <= 1) {
+            alert("You must keep at least one rally leader row.");
+            return;
+        }
+        initialData.splice(index, 1);
+        renderInputs();
+    }
+
+    function secondsToTimeString(totalSecs) {
+        totalSecs = Math.max(0, totalSecs);
+        const h = Math.floor(totalSecs / 3600) % 24;
+        const m = Math.floor((totalSecs % 3600) / 60);
+        const s = Math.floor(totalSecs % 60);
+        return [h, m, s].map(v => v.toString().padStart(2, '0')).join(':');
+    }
+
+    function calculateRallies() {
+        let validItems = initialData.filter(item => item.leader.trim() !== "");
+        if (validItems.length === 0) {
+            document.getElementById('outputTableBody').innerHTML = '<tr><td colspan="2" style="text-align:center;">No valid entries</td></tr>';
+            lastComputedResults = [];
+            return;
+        }
+
+        // 1. Get current system UTC time in seconds from midnight
+        const now = new Date();
+        const currentUtcSeconds = now.getUTCHours() * 3600 + now.getUTCMinutes() * 60 + now.getUTCSeconds();
+        
+        // 2. Add buffer offset
+        const offset = Number(document.getElementById('offsetSeconds').value) || 0;
+        const baseSeconds = currentUtcSeconds + offset;
+
+        // 3. Find max march time
+        let maxMarch = Math.max(...validItems.map(item => Number(item.march)));
+
+        // 4. Compute target seconds for every leader
+        lastComputedResults = validItems.map(item => {
+            let march = Number(item.march);
+            let delay = Number(item.delay);
+            let marchOffset = maxMarch - march;
+            let targetSecs = baseSeconds + marchOffset + delay;
+
+            return {
+                leader: item.leader,
+                targetSecs: targetSecs,
+                timeString: secondsToTimeString(targetSecs)
+            };
+        });
+
+        // 5. Sort chronologically
+        lastComputedResults.sort((a, b) => a.targetSecs - b.targetSecs);
+
+        // 6. Render output table
+        const outputBody = document.getElementById('outputTableBody');
+        outputBody.innerHTML = '';
+
+        lastComputedResults.forEach((item) => {
+            outputBody.innerHTML += `
+                <tr>
+                    <td>${item.leader}</td>
+                    <td>${item.timeString}</td>
+                </tr>
+            `;
+        });
+    }
+
+    function copyResults() {
+        if (lastComputedResults.length === 0) return;
+
+        let textToCopy = lastComputedResults
+            .map(item => `${item.leader} - ${item.timeString}`)
+            .join('\n');
+
+        navigator.clipboard.writeText(textToCopy).then(() => {
+            const status = document.getElementById('copyStatus');
+            status.style.display = 'inline';
+            setTimeout(() => {
+                status.style.display = 'none';
+            }, 2000);
+        }).catch(err => {
+            console.error('Failed to copy text: ', err);
+        });
+    }
+
+    window.onload = renderInputs;
+</script>
+
+</body>
+</html>
